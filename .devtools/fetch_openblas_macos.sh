@@ -10,7 +10,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEST="${REPO_ROOT}/third_party/openblas/lib/macos_arm64"
+DEST="${REPO_ROOT}/.openblas/lib/macos_arm64"
 WORK="${REPO_ROOT}/.openblas-mac-work"
 CHANNEL="https://conda.anaconda.org/conda-forge/osx-arm64"
 

@@ -41,9 +41,11 @@ static func fromDiagonal(values: Array<Float64>): Matrix
 static func build(rows: Int64, cols: Int64, f: (Int64, Int64) -> Float64): Matrix
 static func fromRows(rowsData: Array<Array<Float64>>): Matrix
 static func fromColumns(colsData: Array<Array<Float64>>): Matrix
-static func random(rows: Int64, cols: Int64, seed!: UInt64 = 42): Matrix
+// seed = None (default) draws from a shared process-wide generator, so
+// repeated unseeded calls return different data; pass a seed to reproduce.
+static func random(rows: Int64, cols: Int64, seed!: ?UInt64 = None): Matrix
 static func randomNormal(rows: Int64, cols: Int64, mean!: Float64 = 0.0,
-                         std!: Float64 = 1.0, seed!: UInt64 = 42): Matrix
+                         std!: Float64 = 1.0, seed!: ?UInt64 = None): Matrix
 ```
 
 **Element access, rows & columns**
@@ -131,8 +133,10 @@ static func filled(size, value): Vector
 static func of(values: Array<Float64>): Vector
 static func build(size: Int64, f: (Int64) -> Float64): Vector
 static func linspace(start: Float64, stop: Float64, count: Int64): Vector
-static func basis(size: Int64, i: Int64): Vector
-static func random(size: Int64, seed!: UInt64 = 42): Vector
+static func basis(size: Int64, i: Int64): Vector    // validates i
+static func random(size: Int64, seed!: ?UInt64 = None): Vector      // see Matrix.random on seeding
+static func randomNormal(size: Int64, mean!: Float64 = 0.0,
+                         std!: Float64 = 1.0, seed!: ?UInt64 = None): Vector
 
 operator func [](i): Float64        // and []=(i, value!)
 operator func [](range: Range<Int64>): Vector   // slice (copies)
@@ -156,7 +160,47 @@ func approxEquals(rhs: Vector, tol!: Float64 = 1e-9): Bool
 ### `struct Complex`
 
 Immutable complex value type: `re`, `im`; `+ - * /`, unary `-`, `==`, `!=`;
-`conjugate()`, `abs()`, `arg()`; statics `zero()`, `one()`, `i()`.
+`conjugate()`, `abs()`, `arg()`; statics `zero()`, `one()`, `i()`. Division by a
+zero-modulus complex follows IEEE-754 (NumPy-style `Inf`/`NaN`), not an
+exception.
+
+### `class ComplexVector`
+
+Dense complex vector over an interleaved `Array<CxF64>` (zero-copy to LAPACK).
+The element API uses `Complex`.
+
+```cangjie
+init(size) | init(values: Array<Complex>)
+static zeros(size) | of(values) | fromReal(re: Vector) | fromParts(re, im: Array<Float64>)
+prop size, isEmpty
+operator [](i): Complex | [](i, value!: Complex)
+real(): Vector | imag(): Vector | conjugate(): ComplexVector
+dot(o): Complex        // unconjugated Σ xᵢ yᵢ (zdotu)
+dotc(o): Complex       // Hermitian Σ conj(xᵢ) yᵢ (zdotc)
+norm(): Float64 (dznrm2) | norm1(): Float64 (dzasum) | sum(): Complex
+operator + - ; * Complex ; * Float64 ; / Float64 ; unary - ; hadamard
+==, !=, approxEquals(o, tol!: Float64 = 1e-9)
+```
+
+### `class ComplexMatrix`
+
+Dense row-major complex matrix over `Array<CxF64>`.
+
+```cangjie
+init(rows, cols) | init(rows, cols, data: Array<CxF64>) | init(rowsData: Array<Array<Complex>>)
+static zeros(r,c) | identity(n) | fromReal(a: Matrix) | fromParts(re, im: Matrix) | fromDiagonal(vals)
+prop rows, cols, size, shape, isSquare, isEmpty
+prop t: ComplexMatrix     // plain transpose
+prop h: ComplexMatrix     // conjugate transpose (Hermitian adjoint)
+operator [](i,j): Complex | [](i,j, value!: Complex)
+row(i) | col(j) | diagonal(): ComplexVector | real(): Matrix | imag(): Matrix
+trace(): Complex (square only) | copy | conjugate | map(f)
+frobeniusNorm(): Float64 (dznrm2)
+operator + - ; * Complex ; * Float64 ; / Float64 ; unary - ; hadamard
+operator * (rhs: ComplexMatrix): ComplexMatrix   // zgemm
+operator * (x: ComplexVector): ComplexVector      // zgemv
+==, !=, approxEquals(o, tol!: Float64 = 1e-9)
+```
 
 ### Enums
 
@@ -200,6 +244,13 @@ func gemv(a: Matrix, x: Vector, transA!: Transpose = NoTrans,
 func ger(x: Vector, y: Vector, alpha!: Float64 = 1.0): Matrix            // α x yᵀ
 func axpy(alpha: Float64, x: Vector, y: Vector): Vector                  // α x + y
 func scaleInPlace(x: Vector, alpha: Float64): Vector                     // x *= α (mutates)
+
+// complex overloads (op includes ConjTrans; α/β are Complex) — BLAS zgemm
+func gemm(a: ComplexMatrix, b: ComplexMatrix, transA!: Transpose = NoTrans,
+          transB!: Transpose = NoTrans, alpha!: Complex = Complex(1.0, 0.0)): ComplexMatrix
+func gemmInto(a: ComplexMatrix, b: ComplexMatrix, c: ComplexMatrix,
+          transA!: Transpose = NoTrans, transB!: Transpose = NoTrans,
+          alpha!: Complex = Complex(1.0, 0.0), beta!: Complex = Complex(0.0, 0.0)): Unit
 ```
 
 ---
@@ -233,6 +284,33 @@ func solveSPDMatrix(a: Matrix, b: Matrix): Matrix        // SPD, many rhs  (dpos
 func solveTriangular(a: Matrix, b: Vector, uplo!: Triangle = Lower,
         trans!: Transpose = NoTrans, diag!: Diagonal = NonUnit): Vector  // (dtrtrs)
 func matrixPower(a: Matrix, k: Int64): Matrix            // a^k, k may be negative
+
+// full eigendecomposition of a general real matrix (complex eigenpairs)
+func eigen(a: Matrix): ComplexEigen                      // λ + right vectors (dgeev)
+
+// specialised real solvers
+func eigSymmetricGeneralized(a: Matrix, b: Matrix): EigenSym  // a v = λ b v, b SPD (dsygvd)
+func solveTridiagonal(dl: Vector, d: Vector, du: Vector, b: Vector): Vector   // (dgtsv)
+func eigSymmetricTridiagonal(d: Vector, e: Vector): EigenSym  // (dstev)
+func schur(a: Matrix): Schur                             // a = z t zᵀ     (dgees)
+func expm(a: Matrix): Matrix                             // matrix exponential (Padé)
+```
+
+### Complex linear algebra
+
+Overloads and functions over `ComplexMatrix` / `ComplexVector`:
+
+```cangjie
+func solve(a: ComplexMatrix, b: ComplexVector): ComplexVector       // (zgesv)
+func solveMatrix(a: ComplexMatrix, b: ComplexMatrix): ComplexMatrix // (zgesv)
+func inverse(a: ComplexMatrix): ComplexMatrix                       // (zgetrf+zgetri)
+func determinant(a: ComplexMatrix): Complex                         // (zgetrf)
+func cholesky(a: ComplexMatrix, lower!: Bool = true): ComplexMatrix // a = l lʰ (zpotrf)
+func qr(a: ComplexMatrix): ComplexQR              // a = q r           (zgeqrf+zungqr)
+func eigen(a: ComplexMatrix): ComplexEigen        // λ + right vectors (zgeev)
+func eigHermitian(a: ComplexMatrix): HermitianEigen   // real λ + vecs (zheev)
+func eigenvaluesHermitian(a: ComplexMatrix): Vector   // real λ only   (zheev)
+func svd(a: ComplexMatrix): ComplexSVD            // a = u Σ vʰ        (zgesdd)
 ```
 
 ### Result types
@@ -275,6 +353,43 @@ diagonal):
 | `l` | `Matrix` | m×k, unit-lower-triangular (`l[i,i] == 1`) |
 | `u` | `Matrix` | k×n, upper-triangular |
 
+**`struct Schur`** — real Schur decomposition, `a == z * t * z.t`:
+
+| Field | Type | Shape / meaning |
+|-------|------|-----------------|
+| `z` | `Matrix` | n×n orthogonal Schur vectors |
+| `t` | `Matrix` | n×n quasi-upper-triangular (1×1 and 2×2 diagonal blocks) |
+
+**`struct ComplexEigen`** — general eigendecomposition (`eigen`), `a * vectors ==
+vectors * diag(values)`:
+
+| Field | Type | Shape / meaning |
+|-------|------|-----------------|
+| `values`  | `ComplexVector` | n eigenvalues (LAPACK order) |
+| `vectors` | `ComplexMatrix` | n×n, **column k** is the right eigenvector for `values[k]` |
+
+**`struct HermitianEigen`** — Hermitian eigendecomposition (`eigHermitian`):
+
+| Field | Type | Shape / meaning |
+|-------|------|-----------------|
+| `values`  | `Vector` | length n, **real** eigenvalues, ascending |
+| `vectors` | `ComplexMatrix` | n×n, orthonormal; column j pairs with `values[j]` |
+
+**`struct ComplexSVD`** — complex SVD, `a == u * diag(s) * vh`:
+
+| Field | Type | Shape / meaning |
+|-------|------|-----------------|
+| `u`  | `ComplexMatrix` | m×k left singular vectors |
+| `s`  | `Vector` | length k, **real** singular values, descending |
+| `vh` | `ComplexMatrix` | k×n, conjugate-transposed right singular vectors |
+
+**`struct ComplexQR`** — reduced complex QR, `a == q * r`:
+
+| Field | Type | Shape / meaning |
+|-------|------|-----------------|
+| `q` | `ComplexMatrix` | m×k, orthonormal columns (`q.h * q == I`) |
+| `r` | `ComplexMatrix` | k×n, upper-triangular |
+
 ### try* variants (non-throwing)
 
 Every routine whose failure is **data-dependent** has a `try` twin that returns
@@ -294,8 +409,25 @@ func tryMatrixPower(a, k): ?Matrix    // negative k on a singular matrix
 func trySvd(a): ?SVD                  func tryEigSymmetric(a): ?EigenSym
 func tryEigenvalues(a): ?Array<Complex>
 func tryEigenvaluesSymmetric(a): ?Vector
+func tryEigen(a: Matrix): ?ComplexEigen
 func tryLstsq(a, b): ?Vector          func tryPinv(a): ?Matrix
 func tryMatrixRank(a, tol!): ?Int64   func tryCond(a): ?Float64
+
+// complex twins (same conventions):
+func trySolve(a: ComplexMatrix, b: ComplexVector): ?ComplexVector
+func trySolveMatrix(a: ComplexMatrix, b: ComplexMatrix): ?ComplexMatrix
+func tryInverse(a: ComplexMatrix): ?ComplexMatrix
+func tryCholesky(a: ComplexMatrix, lower!): ?ComplexMatrix
+func tryEigen(a: ComplexMatrix): ?ComplexEigen
+func tryEigHermitian(a: ComplexMatrix): ?HermitianEigen
+func tryEigenvaluesHermitian(a: ComplexMatrix): ?Vector
+func trySvd(a: ComplexMatrix): ?ComplexSVD
+
+// specialised-solver twins:
+func trySolveTridiagonal(dl, d, du, b): ?Vector
+func tryEigSymmetricGeneralized(a, b): ?EigenSym   // None if B not PD or no convergence
+func tryEigSymmetricTridiagonal(d, e): ?EigenSym
+func trySchur(a): ?Schur
 ```
 
 ```cangjie
@@ -322,4 +454,6 @@ func getParallel(): Int32       // 0 sequential, 1 pthreads, 2 OpenMP
 canonical name as a `public unsafe` wrapper — `dgemm`, `dgesv`, `zheev`,
 `somatcopy`, … — taking `CPointer<…>` arguments. These are for advanced use;
 prefer the typed API above. Layout/flag constants live in the `Cblas` and
-`Lapack` structs (`Cblas.ROW_MAJOR`, `Cblas.NO_TRANS`, …).
+`Lapack` structs (`Cblas.ROW_MAJOR`, `Cblas.NO_TRANS`, …). See
+[`RAW_BINDINGS.md`](RAW_BINDINGS.md) for a worked example and the conventions
+(zero-copy acquire/release, leading dimensions, the `_sub` complex-dot caveat).

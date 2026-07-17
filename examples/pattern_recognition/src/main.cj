@@ -22,9 +22,9 @@ let PER_CLASS = 40
 /** Build a labelled 4-D dataset of three Gaussian blobs. */
 func makeData(): (Matrix, Array<Int64>) {
     let centers = Matrix([
-            [3.0, 3.0, 0.0, 0.0],
-            [-3.0, 3.0, 0.0, 0.0],
-            [0.0, -3.0, 3.0, 0.0]
+        [3.0, 3.0, 0.0, 0.0],
+        [-3.0, 3.0, 0.0, 0.0],
+        [0.0, -3.0, 3.0, 0.0]
     ])
     let n = CLASSES * PER_CLASS
     let data = Matrix(n, 4)

@@ -77,7 +77,7 @@ the leaf `matcang.prelude` instead.
 
 ## Binding generation
 
-`tools/gen_bindings.py` parses the OpenBLAS headers (`cblas.h`, `lapacke.h`) and
+`.devtools/gen_bindings.py` parses the OpenBLAS headers (`cblas.h`, `lapacke.h`) and
 emits:
 
 - the `foreign` declaration blocks (`ffi_*.cj`), and
@@ -90,7 +90,16 @@ against the symbols the built `libopenblas.so` actually exports, so bindings for
 routines this build omits (extended-precision `*svxx`, bfloat16, half-precision)
 are simply not generated and everything links.
 
-Regenerate after changing the OpenBLAS build with `tools/build_openblas.sh`.
+One deliberate refinement: `cblas.h` types every complex operand (matrices,
+vectors and the α/β scalars) as `void *`. The generator recovers the real type
+from the routine's BLAS precision prefix, so `cblas_zgemm`'s pointers become
+`CPointer<CxF64>` rather than `CPointer<Unit>` — the same type safety the
+LAPACKE layer already carries. (The four by-value complex-return dot functions,
+`?dotu`/`?dotc`, keep their historical value return; the high-level
+`ComplexVector` uses the `*_sub` output-pointer variants instead, which are
+ABI-safe on every platform.)
+
+Regenerate after changing the OpenBLAS build with `.devtools/build_openblas.sh`.
 
 ## Storage and interop
 
@@ -105,6 +114,12 @@ Regenerate after changing the OpenBLAS build with `tools/build_openblas.sh`.
 - Arithmetic operators return fresh values (immutable-by-default), while the
   `matcang.blas` layer and in-place helpers are available when avoiding
   allocation matters.
+- `ComplexMatrix` / `ComplexVector` follow the identical design over a flat
+  `Array<CxF64>`. `CxF64` is the `@C` interleaved `(re, im)` value type, which
+  is exactly LAPACK/CBLAS complex storage, so complex buffers also cross the
+  boundary **zero-copy** — no packing or unpacking. The element API converts to
+  and from the ergonomic `Complex` at its edges (a trivial field copy), and
+  distinguishes the plain transpose `.t` from the conjugate transpose `.h`.
 
 ## Error handling
 
@@ -113,3 +128,21 @@ LAPACK's `info` return code is translated into a typed exception:
 context-specific `SingularMatrixException` or `ConvergenceException`. Shape
 checks throw `DimensionMismatchException` / `NonSquareMatrixException` before any
 native call, so misuse fails fast with a clear message rather than a crash.
+
+## Lint posture
+
+`cjlint -f src` reports **0 errors**. The warnings it emits are accepted with
+reasons, recorded here so the baseline is auditable:
+
+- **Generated bindings** (`ffi_*.cj`, `*_binding.cj`, ~6100 warnings):
+  `G.FUN.01` (>5 parameters) and `G.NAM.04` (underscore names like
+  `zdotu_sub`) are inherent to a faithful 1:1 mapping of the BLAS/LAPACK C
+  API — parameter counts and names come from the C interface and must not be
+  "fixed".
+- **Hand-written code** (~200 warnings): `G.OPR.01` (operator overloading) is
+  the point of a matrix library; `G.PKG.01` (`std.math.*` wildcard) is the
+  idiom for math-dense numeric code, and the prelude's wildcard re-export is
+  its documented purpose; the few `G.FUN.01` hits (`gemmInto`, `lu`, `eigen`)
+  mirror the underlying LAPACK call structure; `G.ERR.01` (exception types in
+  API comments) is tracked as a docs improvement — the exception contract is
+  centrally documented in `docs/API.md` instead of per-signature.

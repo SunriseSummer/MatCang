@@ -1,6 +1,6 @@
 # matcang examples — a guided tour
 
-Fourteen self-contained programs, each a real piece of mathematics **and** an
+Eighteen self-contained programs, each a real piece of mathematics **and** an
 end-to-end test (prints `OK` and exits 0 only when its numerical claims hold).
 Run any of them with:
 
@@ -24,7 +24,7 @@ layer of the library:
 
 | Example | 难度 | The hook | Library focus |
 |---------|------|----------|---------------|
-| [`api_tour`](api_tour) | ★ | the whole API, one file, 55 checks | everything |
+| [`api_tour`](api_tour) | ★ | the whole API, one file, 70+ checks | everything |
 | [`kalman_filter`](kalman_filter) | ★ | filter a noisy track like a navigation system | operators, `.t`, `inverse` |
 | [`markov_chain`](markov_chain) | ★ | tomorrow's weather, the climate, and the speed of forgetting | `matrixPower`, `solve`, `eigenvalues` |
 | [`pagerank`](pagerank) | ★ | the eigenvector that ranked the web | matvec iteration, `solve`, `norm1` |
@@ -38,6 +38,15 @@ layer of the library:
 | [`finite_element`](finite_element) | ★★★ | a PDE solver in 100 lines, with provable O(h²) convergence | assembly, `solve` |
 | [`heat_equation`](heat_equation) | ★★★ | factor once, march 200 timesteps by back-substitution | `lu`, `solveTriangular` |
 | [`als_recommender`](als_recommender) | ★★★ | a working recommender system (the Netflix-Prize workhorse) | `solveSPDMatrix` at scale |
+
+### Complex numbers & advanced solvers
+
+| Example | 难度 | The hook | Library focus |
+|---------|------|----------|---------------|
+| [`dft_spectrum`](dft_spectrum) | ★★ | the Fourier transform *is* a matrix; read a signal's frequencies | `ComplexMatrix`, `zgemv`, `.h` |
+| [`rlc_circuit`](rlc_circuit) | ★★ | AC circuits are complex linear systems; watch resonance appear | complex `solve` (`zgesv`) |
+| [`quantum_spin`](quantum_spin) | ★★★ | a qubit in a field: real energies, complex states | `eigHermitian` (`zheev`), `dotc` |
+| [`vibration_modes`](vibration_modes) | ★★★ | a structure's natural frequencies, checked against closed form | `eigSymmetricGeneralized` (`dsygvd`) |
 
 ## Three ideas worth stealing
 

@@ -1,7 +1,7 @@
 /*
  * Raw foreign declarations for the OpenBLAS C API.
  * AUTO-GENERATED from OpenBLAS v0.3.33 headers (cblas.h / lapacke.h).
- * Do not edit by hand; regenerate with tools/gen_bindings.py.
+ * Do not edit by hand; regenerate with .devtools/gen_bindings.py.
  *
  * These live in the root `matcang` package (not a subpackage) because
  * Cangjie `foreign` functions are package-internal and can carry no access

@@ -1,9 +1,10 @@
 # Third-party notices
 
-matcang redistributes the following third-party components in binary form under
-`.openblas/`. Their license texts accompany the binaries or are
-referenced below; nothing in this repository modifies their upstream sources
-except as described.
+matcang redistributes the following third-party components in binary form in
+its **release packages** (under `.openblas/lib/<platform>/`; the binaries are
+not committed to the source repository). Their license texts accompany the
+binaries or are referenced below; nothing in this project modifies their
+upstream sources except as described.
 
 ## OpenBLAS 0.3.33 — BSD 3-Clause
 
@@ -15,10 +16,10 @@ except as described.
 - License: BSD 3-Clause — see [`.openblas/LICENSE`](.openblas/LICENSE).
 - Provenance: Linux and Windows binaries are built unmodified from the
   [OpenBLAS v0.3.33 tag](https://github.com/OpenMathLib/OpenBLAS/tree/v0.3.33)
-  (`tools/build_openblas.sh`, `tools/build_openblas_windows.sh`). The macOS
+  (`.devtools/build_openblas.sh`, `.devtools/build_openblas_windows.sh`). The macOS
   arm64 binary is the conda-forge `libopenblas 0.3.33` build; its Mach-O load
   commands were rewritten to `@loader_path` for relocatability
-  (`tools/fetch_openblas_macos.sh`) — no code changes.
+  (`.devtools/fetch_openblas_macos.sh`) — no code changes.
 
 ## GCC runtime libraries — GPL-3.0 with GCC Runtime Library Exception
 
@@ -39,4 +40,4 @@ Library Exception, which permits redistribution with programs of any license:
 
 The generated bindings under `matcang/src/ffi_*.cj` and
 `matcang/src/*_binding.cj` are mechanically derived from the OpenBLAS public
-C headers (`cblas.h`, `lapacke.h`; BSD 3-Clause) by `tools/gen_bindings.py`.
+C headers (`cblas.h`, `lapacke.h`; BSD 3-Clause) by `.devtools/gen_bindings.py`.

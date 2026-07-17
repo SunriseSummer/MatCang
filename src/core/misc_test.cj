@@ -42,9 +42,21 @@ class ComplexExtraTests {
     }
 
     @TestCase
+    func absIsOverflowSafe() {
+        // components near Float64's range must not overflow in the squares
+        let big = Complex(1.0e200, 1.0e200)
+        let expected = 1.0e200 * sqrt(2.0)
+        @Expect(abs(big.abs() - expected) / expected < 1e-15)
+        @Expect(Complex(3.0, 4.0).abs() == 5.0)
+        @Expect(Complex(0.0, 0.0).abs() == 0.0)
+        @Expect(Complex(0.0, -7.0).abs() == 7.0)
+    }
+
+    @TestCase
     func rendering() {
-        @Expect(Complex(1.5, 2.0).toString() == "1.500000+2.000000i")
-        @Expect(Complex(1.5, -2.0).toString() == "1.500000-2.000000i")
+        // Fixed 4-decimal rendering, consistent with Matrix/Vector formatting.
+        @Expect(Complex(1.5, 2.0).toString() == "1.5000+2.0000i")
+        @Expect(Complex(1.5, -2.0).toString() == "1.5000-2.0000i")
     }
 
     @TestCase
@@ -126,5 +138,36 @@ class MutationAndEqualityTests {
         @AssertThrows[MatCangException](v[3])
         @Expect(v[0..3 : 2].approxEquals(Vector([5.0, 2.0])))
         @AssertThrows[DimensionMismatchException](v.hadamard(Vector([1.0])))
+        // basis validates its index (a clean library error, not a raw array trap)
+        @AssertThrows[MatCangException](Vector.basis(4, 4))
+        @AssertThrows[MatCangException](Vector.basis(4, -1))
+    }
+}
+
+@Test
+class RandomSeedingTests {
+    @TestCase
+    func seededIsReproducible() {
+        // Same explicit seed -> identical data (the property tests rely on).
+        @Expect(Matrix.random(3, 3, seed: 7).approxEquals(Matrix.random(3, 3, seed: 7)))
+        @Expect(Vector.random(5, seed: 7).approxEquals(Vector.random(5, seed: 7)))
+        @Expect(Matrix.randomNormal(3, 3, seed: 8).approxEquals(Matrix.randomNormal(3, 3, seed: 8)))
+    }
+
+    @TestCase
+    func unseededDrawsDiffer() {
+        // Two unseeded draws must NOT be identical (the fixed footgun): they
+        // advance a shared generator. A 9-element collision by chance is ~0.
+        let a = Matrix.random(3, 3)
+        let b = Matrix.random(3, 3)
+        @Expect(!a.approxEquals(b))
+        let u = Vector.randomNormal(8)
+        let w = Vector.randomNormal(8)
+        @Expect(!u.approxEquals(w))
+    }
+
+    @TestCase
+    func differentSeedsDiffer() {
+        @Expect(!Matrix.random(4, 4, seed: 1).approxEquals(Matrix.random(4, 4, seed: 2)))
     }
 }

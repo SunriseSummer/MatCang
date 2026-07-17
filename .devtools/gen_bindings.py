@@ -65,6 +65,28 @@ SELECT_RE = re.compile(r'LAPACK_[SDCZ]_SELECT[123]')
 unknown_types = set()
 
 
+def cblas_complex_width(name):
+    """Complex element width of a CBLAS routine, or None for real routines.
+
+    cblas.h declares every complex operand (matrices, vectors and the
+    alpha/beta scalars) as `void *`, which the generic type mapper turns into
+    `CPointer<Unit>`. That throws away type safety the LAPACKE layer keeps
+    (it uses `lapack_complex_*` -> `CxF32/CxF64`). We recover it here from the
+    routine's BLAS precision prefix: any 'z' in the leading letters means
+    double complex, otherwise a 'c' means single complex. Only routines that
+    actually carry `void *` operands are complex, so a false positive on a real
+    routine whose name happens to contain 'c'/'z' (e.g. `dcopy`, `scopy`) is
+    harmless: it has no `CPointer<Unit>` arg to rewrite.
+    """
+    short = name[len('cblas_'):] if name.startswith('cblas_') else name
+    head = short[:3]
+    if 'z' in head:
+        return 'CxF64'
+    if 'c' in head:
+        return 'CxF32'
+    return None
+
+
 def clean_header(text):
     # strip C block comments
     text = re.sub(r'/\*.*?\*/', ' ', text, flags=re.S)
@@ -165,6 +187,12 @@ def parse_proto(chunk):
             if t is None:
                 continue
             args.append(t)
+    # Recover complex pointer types for CBLAS routines (cblas.h uses void*).
+    if name.startswith('cblas_'):
+        w = cblas_complex_width(name)
+        if w is not None:
+            cx_ptr = 'CPointer<{}>'.format(w)
+            args = [a.replace('CPointer<Unit>', cx_ptr) for a in args]
     return (name, args, ret_cj, varargs)
 
 
@@ -266,7 +294,7 @@ def main():
 
     header = ("/*\n * Raw foreign declarations for the OpenBLAS C API.\n"
               " * AUTO-GENERATED from OpenBLAS v0.3.33 headers (cblas.h / lapacke.h).\n"
-              " * Do not edit by hand; regenerate with tools/gen_bindings.py.\n *\n"
+              " * Do not edit by hand; regenerate with .devtools/gen_bindings.py.\n *\n"
               " * These live in the root `matcang` package (not a subpackage) because\n"
               " * Cangjie `foreign` functions are package-internal and can carry no access\n"
               " * modifier; keeping them at the root lets every matcang.* subpackage call\n"
@@ -274,7 +302,7 @@ def main():
               "package matcang\n\n")
 
     wrap_header = ("/*\n * Public, safe-to-link wrappers over the raw OpenBLAS foreign decls.\n"
-                   " * AUTO-GENERATED; do not edit by hand (see tools/gen_bindings.py).\n *\n"
+                   " * AUTO-GENERATED; do not edit by hand (see .devtools/gen_bindings.py).\n *\n"
                    " * Cangjie `foreign` functions only resolve to their C symbol when called\n"
                    " * from inside their declaring package, so these thin `unsafe` forwarders\n"
                    " * (regular public functions, hence linkable across the whole module) give\n"

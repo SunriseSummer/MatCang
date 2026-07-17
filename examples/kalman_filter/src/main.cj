@@ -17,6 +17,15 @@ import std.random.Random
 import matcang.core.Matrix
 import matcang.linalg.inverse
 
+func rmse(estimate: Array<Float64>, truth: Array<Float64>): Float64 {
+    var acc = 0.0
+    for (i in 0..estimate.size) {
+        let d = estimate[i] - truth[i]
+        acc += d * d
+    }
+    sqrt(acc / Float64(estimate.size))
+}
+
 /** One predict + update step of the Kalman recursion. */
 func kalmanStep(
     x: Matrix,
@@ -40,15 +49,6 @@ func kalmanStep(
     (xNext, pNext)
 }
 
-func rmse(estimate: Array<Float64>, truth: Array<Float64>): Float64 {
-    var acc = 0.0
-    for (i in 0..estimate.size) {
-        let d = estimate[i] - truth[i]
-        acc += d * d
-    }
-    sqrt(acc / Float64(estimate.size))
-}
-
 main(): Int64 {
     let steps = 100
     let dt = 1.0
@@ -56,14 +56,14 @@ main(): Int64 {
     let measurementNoise = 8.0 // standard deviation of position measurements
 
     // model matrices
-    let f = Matrix.fromRows([[1.0, dt], [0.0, 1.0]])
-    let h = Matrix.fromRows([[1.0, 0.0]])
-    let q = Matrix.fromRows([[0.001, 0.0], [0.0, 0.001]])
-    let r = Matrix.fromRows([[measurementNoise * measurementNoise]])
+    let f = Matrix([[1.0, dt], [0.0, 1.0]])
+    let h = Matrix([[1.0, 0.0]])
+    let q = Matrix([[0.001, 0.0], [0.0, 0.001]])
+    let r = Matrix([[measurementNoise * measurementNoise]])
 
     // initial estimate: unknown, large uncertainty
-    var x = Matrix.fromRows([[0.0], [0.0]])
-    var p = Matrix.fromRows([[500.0, 0.0], [0.0, 500.0]])
+    var x = Matrix([[0.0], [0.0]])
+    var p = Matrix([[500.0, 0.0], [0.0, 500.0]])
 
     let rng = Random(7)
     let truth = Array<Float64>(steps, repeat: 0.0)
@@ -73,7 +73,7 @@ main(): Int64 {
     for (k in 0..steps) {
         let truePos = trueVelocity * Float64(k)
         let noisy = truePos + rng.nextGaussianFloat64(mean: 0.0, sigma: measurementNoise)
-        let z = Matrix.fromRows([[noisy]])
+        let z = Matrix([[noisy]])
         let (xNext, pNext) = kalmanStep(x, p, z, f, h, q, r)
         x = xNext
         p = pNext

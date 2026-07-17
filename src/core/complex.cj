@@ -49,6 +49,11 @@ public struct Complex <: ToString & Equatable<Complex> {
         Complex(re * rhs.re - im * rhs.im, re * rhs.im + im * rhs.re)
     }
 
+    /**
+     * Complex division. Dividing by zero follows IEEE-754 semantics (the
+     * NumPy convention): the result carries `Inf`/`NaN` components rather than
+     * throwing, so it composes in numeric pipelines without special-casing.
+     */
     public operator func /(rhs: Complex): Complex {
         let denom = rhs.re * rhs.re + rhs.im * rhs.im
         Complex((re * rhs.re + im * rhs.im) / denom, (im * rhs.re - re * rhs.im) / denom)
@@ -63,9 +68,35 @@ public struct Complex <: ToString & Equatable<Complex> {
         Complex(re, -im)
     }
 
-    /** Modulus |z| = sqrt(re^2 + im^2). */
+    /**
+     * Modulus |z| = sqrt(re^2 + im^2), computed in scaled form so components
+     * near Float64's range limits do not overflow/underflow in the squares
+     * (the hypot algorithm).
+     */
     public func abs(): Float64 {
-        sqrt(re * re + im * im)
+        var ar = re
+        if (ar < 0.0) {
+            ar = -ar
+        }
+        var ai = im
+        if (ai < 0.0) {
+            ai = -ai
+        }
+        let hi = if (ar > ai) {
+            ar
+        } else {
+            ai
+        }
+        if (hi == 0.0) {
+            return 0.0
+        }
+        let lo = if (ar > ai) {
+            ai
+        } else {
+            ar
+        }
+        let r = lo / hi
+        hi * sqrt(1.0 + r * r)
     }
 
     /** Argument (phase angle) in radians. */
@@ -82,10 +113,11 @@ public struct Complex <: ToString & Equatable<Complex> {
     }
 
     public func toString(): String {
+        // Fixed 4-decimal rendering, matching Matrix/Vector pretty-printing.
         if (im >= 0.0) {
-            "${re}+${im}i"
+            "${formatFixed(re, 4)}+${formatFixed(im, 4)}i"
         } else {
-            "${re}-${-im}i"
+            "${formatFixed(re, 4)}-${formatFixed(-im, 4)}i"
         }
     }
 }

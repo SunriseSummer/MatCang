@@ -5,7 +5,7 @@
 package matcang.linalg
 
 import std.math.*
-import matcang.core.{Matrix, Vector, Triangle, DimensionMismatchException}
+import matcang.core.{Matrix, Vector, Complex, ComplexMatrix, ComplexVector, Triangle, DimensionMismatchException}
 
 @Test
 class TryApiTests {
@@ -76,5 +76,69 @@ class TryApiTests {
         @Expect(tryCond(a).getOrThrow() > 1.0 - 1e-12)
         @Expect(tryEigenvaluesSymmetric(a).isSome())
         @Expect(trySolveMatrix(a, Matrix.identity(2)).isSome())
+    }
+}
+
+@Test
+class ComplexAndSpecialTryTests {
+    func cxSingular(): ComplexMatrix {
+        // rank-1: second row is 2x the first
+        ComplexMatrix([[Complex(1.0, 1.0), Complex(2.0, 0.0)], [Complex(2.0, 2.0), Complex(4.0, 0.0)]])
+    }
+    func cxRegular(): ComplexMatrix {
+        ComplexMatrix([[Complex(1.0, 1.0), Complex(2.0, 0.0)], [Complex(3.0, 0.0), Complex(4.0, -1.0)]])
+    }
+
+    @TestCase
+    func complexTrySolveAndInverse() {
+        let b = ComplexVector.of([Complex(1.0, 0.0), Complex(0.0, 1.0)])
+        @Expect(trySolve(cxSingular(), b).isNone())
+        @Expect(tryInverse(cxSingular()).isNone())
+        @Expect(trySolveMatrix(cxSingular(), ComplexMatrix.identity(2)).isNone())
+        if (let Some(x) <- trySolve(cxRegular(), b)) {
+            @Expect((cxRegular() * x).approxEquals(b, tol: 1e-9))
+        } else {
+            @Fail("complex trySolve returned None on a regular system")
+        }
+        @Expect(tryInverse(cxRegular()).isSome())
+    }
+
+    @TestCase
+    func complexTryCholesky() {
+        // Hermitian but indefinite (eigenvalues of sigma_x are +/-1)
+        let indefinite = ComplexMatrix([[Complex(0.0, 0.0), Complex(1.0, 0.0)], [Complex(1.0, 0.0), Complex(0.0, 0.0)]])
+        @Expect(tryCholesky(indefinite).isNone())
+        // Hermitian positive definite
+        let hpd = ComplexMatrix([[Complex(2.0, 0.0), Complex(1.0, -1.0)], [Complex(1.0, 1.0), Complex(3.0, 0.0)]])
+        @Expect(tryCholesky(hpd).isSome())
+    }
+
+    @TestCase
+    func complexTrySpectral() {
+        @Expect(tryEigen(cxRegular()).isSome())
+        @Expect(trySvd(cxRegular()).isSome())
+        let herm = cxRegular() * cxRegular().h
+        @Expect(tryEigHermitian(herm).isSome())
+        @Expect(tryEigenvaluesHermitian(herm).isSome())
+        // real-matrix overload of tryEigen
+        @Expect(tryEigen(Matrix([[0.0, -1.0], [1.0, 0.0]])).isSome())
+    }
+
+    @TestCase
+    func specialSolverTwins() {
+        // singular tridiagonal (all zeros)
+        @Expect(trySolveTridiagonal(Vector([0.0]), Vector([0.0, 0.0]), Vector([0.0]),
+            Vector([1.0, 1.0])).isNone())
+        // regular tridiagonal
+        @Expect(trySolveTridiagonal(Vector([-1.0]), Vector([2.0, 2.0]), Vector([-1.0]),
+            Vector([1.0, 1.0])).isSome())
+        // generalized eig: B not positive definite -> None
+        let sym = Matrix([[2.0, 1.0], [1.0, 2.0]])
+        let notPd = Matrix([[1.0, 2.0], [2.0, 1.0]])
+        @Expect(tryEigSymmetricGeneralized(sym, notPd).isNone())
+        @Expect(tryEigSymmetricGeneralized(sym, Matrix.identity(2)).isSome())
+        // tridiagonal eig + schur succeed on well-posed inputs
+        @Expect(tryEigSymmetricTridiagonal(Vector([2.0, 2.0]), Vector([-1.0])).isSome())
+        @Expect(trySchur(Matrix([[1.0, 2.0], [3.0, 4.0]])).isSome())
     }
 }

@@ -8,14 +8,13 @@
 package api_tour
 
 import std.math.*
-import matcang.core.{ Matrix, Vector, Complex, Transpose, Triangle,
-    ScalarOps, DimensionMismatchException, SingularMatrixException }
-import matcang.blas.{ gemm, gemmInto, gemv, ger, syrk, axpy, scaleInPlace }
-import matcang.linalg.{ solve, solveMatrix, inverse, determinant,
-    cholesky, qr, svd, eigSymmetric, eigenvalues, lstsq, 
-    pinv, matrixRank, cond, lu, solveSPD, solveTriangular,
-    matrixPower, trySolve, tryInverse, tryCholesky }
-import matcang.{ setNumThreads, getNumThreads, getConfig }
+import matcang.core.{Matrix, Vector, Complex, ComplexMatrix, ComplexVector, Transpose, Triangle, ScalarOps, 
+    DimensionMismatchException, SingularMatrixException}
+import matcang.blas.{gemm, gemmInto, gemv, ger, syrk, axpy, scaleInPlace}
+import matcang.linalg.{solve, solveMatrix, inverse, determinant, cholesky, qr, svd, eigSymmetric, eigenvalues, eigen, 
+    lstsq, pinv, matrixRank, cond, lu, solveSPD, solveTriangular, matrixPower, trySolve, tryInverse, tryCholesky, 
+    eigHermitian, eigSymmetricGeneralized, solveTridiagonal, expm}
+import matcang.{setNumThreads, getNumThreads, getConfig}
 
 var failures = 0
 
@@ -145,6 +144,55 @@ main(): Int64 {
     check("singular inverse throws", singThrew)
     let z = Complex(3.0, 4.0)
     check("complex abs/conj", near(z.abs(), 5.0) && near((z * z.conjugate()).re, 25.0))
+
+    section("complex numbers")
+    let cv = ComplexVector.of([Complex(1.0, 2.0), Complex(3.0, 4.0)])
+    check("ComplexVector.dotc self = ||^2", abs(cv.dotc(cv).re - 30.0) < 1e-12)
+    let cm = ComplexMatrix([[Complex(0.0, 1.0), Complex(1.0, 0.0)], [Complex(1.0, 0.0), Complex(0.0, 1.0)]])
+    check("ComplexMatrix A*I == A", (cm * ComplexMatrix.identity(2)).approxEquals(cm))
+    check("conjugate transpose (A^H)^H == A", cm.h.h.approxEquals(cm))
+    // Hermitian A A^H has a real, non-negative spectrum
+    let herm = cm * cm.h
+    let he = eigHermitian(herm)
+    check("eigHermitian real spectrum", he.values.size == 2 && he.values[0] >= -1e-9)
+    // complex solve round-trips
+    let cb = ComplexVector.of([Complex(1.0, 0.0), Complex(0.0, 1.0)])
+    check("complex solve A x = b", (cm * solve(cm, cb)).approxEquals(cb, tol: 1e-9))
+    // general real matrix -> complex eigenpairs (rotation has eigenvalues +/- i)
+    let rotEig = eigen(Matrix([[0.0, -1.0], [1.0, 0.0]]))
+    check("eigen(real) gives complex eigenvalues", abs(rotEig.values[0].abs() - 1.0) < 1e-9)
+    // complex determinant, trace, cholesky and QR
+    check("complex determinant/trace",
+        determinant(ComplexMatrix.identity(2)) == Complex(1.0, 0.0) && cm.trace() == Complex(0.0, 2.0))
+    let hpd = cm * cm.h + ComplexMatrix.identity(2) * 2.0
+    let lFac = cholesky(hpd)
+    check("complex cholesky L*L^H", (lFac * lFac.h).approxEquals(hpd, tol: 1e-9))
+    let qrf = qr(cm)
+    check("complex qr Q^H Q = I",
+        (qrf.q.h * qrf.q).approxEquals(ComplexMatrix.identity(2), tol: 1e-9) && (qrf
+            .q * qrf
+            .r)
+            .approxEquals(cm, tol: 1e-9))
+    // complex gemmInto (allocation-free path) matches the operator
+    let cInto = ComplexMatrix(2, 2)
+    gemmInto(cm, hpd, cInto)
+    check("complex gemmInto", cInto.approxEquals(cm * hpd, tol: 1e-9))
+    // complex try*: singular solve branches to None
+    let cxSing = ComplexMatrix([[Complex(1.0, 1.0), Complex(2.0, 2.0)], [Complex(2.0, 2.0), Complex(4.0, 4.0)]])
+    check("complex trySolve None on singular", trySolve(cxSing, cb).isNone())
+
+    section("specialised solvers")
+    // generalised symmetric eig  A v = lambda B v
+    let ga = Matrix([[2.0, 1.0], [1.0, 2.0]])
+    let gb = Matrix([[2.0, 0.0], [0.0, 1.0]])
+    let ge = eigSymmetricGeneralized(ga, gb)
+    check("eigSymmetricGeneralized",
+        (ga * ge.vectors.col(0)).approxEquals((gb * ge.vectors.col(0)) * ge.values[0], tol: 1e-9))
+    // tridiagonal solve
+    let tx = solveTridiagonal(Vector([-1.0, -1.0]), Vector([2.0, 2.0, 2.0]), Vector([-1.0, -1.0]), Vector([1.0, 0.0, 1.0]))
+    check("solveTridiagonal", tx.size == 3)
+    // matrix exponential of the zero matrix is the identity
+    check("expm(0) == I", expm(Matrix.zeros(3, 3)).approxEquals(Matrix.identity(3), tol: 1e-12))
 
     section("runtime control")
     let before = getNumThreads()

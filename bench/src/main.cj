@@ -19,10 +19,11 @@ package bench
 
 import std.math.abs
 import matcang.core.Matrix
-import matcang.blas.gemmInto
-import matcang.linalg.{solve, cholesky, svd, eigSymmetric}
-import matcang.{dgemm, Cblas, getConfig, getNumThreads}
-import matcang.core.Vector
+import matcang.blas.{gemmInto, gemm}
+import matcang.linalg.{solve, cholesky, svd, eigSymmetric, eigHermitian, eigen, expm, eigSymmetricGeneralized, qr, schur
+    }
+import matcang.{dgemm, zgemm, CxF64, Cblas, getConfig, getNumThreads}
+import matcang.core.{Vector, Complex, ComplexMatrix, ComplexVector}
 
 /** Direct BLAS dgemm into `out` — the C baseline every wrapper is held to. */
 func rawGemm(a: Matrix, b: Matrix, out: Matrix): Unit {
@@ -205,6 +206,157 @@ func factorSuite(): Unit {
     printRow("eigSymmetric 256x256 (dsyev)", tEig)
 }
 
+/** Random complex matrix built from two real random matrices. */
+func randomComplex(rows: Int64, cols: Int64, s1: UInt64, s2: UInt64): ComplexMatrix {
+    ComplexMatrix.fromParts(Matrix.randomNormal(rows, cols, seed: s1), Matrix.randomNormal(rows, cols, seed: s2))
+}
+
+/** Flop count of an n x n x n complex dense multiply (8 real flops per madd). */
+func gemmFlopsComplex(n: Int64): Float64 {
+    8.0 * Float64(n) * Float64(n) * Float64(n)
+}
+
+/** Direct BLAS zgemm into `out` — the C baseline for the complex wrappers. */
+func rawZgemm(a: ComplexMatrix, b: ComplexMatrix, out: ComplexMatrix): Unit {
+    let n = a.rows
+    let alpha = Array<CxF64>(1, repeat: CxF64(1.0, 0.0))
+    let beta = Array<CxF64>(1, repeat: CxF64(0.0, 0.0))
+    unsafe {
+        let ha = acquireArrayRawData(a.data)
+        let hb = acquireArrayRawData(b.data)
+        let hc = acquireArrayRawData(out.data)
+        let hal = acquireArrayRawData(alpha)
+        let hbe = acquireArrayRawData(beta)
+        zgemm(Cblas.ROW_MAJOR, Cblas.NO_TRANS, Cblas.NO_TRANS, Int32(n), Int32(n), Int32(n), hal.pointer, ha.pointer,
+            Int32(n), hb.pointer, Int32(n), hbe.pointer, hc.pointer, Int32(n))
+        releaseArrayRawData(hbe)
+        releaseArrayRawData(hal)
+        releaseArrayRawData(hc)
+        releaseArrayRawData(hb)
+        releaseArrayRawData(ha)
+    }
+}
+
+func complexSuite(): Bool {
+    printHeader("complex linear algebra (z-precision, gate: gemmInto <= 1.25x raw)")
+    let n = 512
+    let a = randomComplex(n, n, 21, 22)
+    let b = randomComplex(n, n, 23, 24)
+    let out = ComplexMatrix(n, n)
+
+    // complex wrapper parity: raw zgemm vs allocation-free gemmInto vs a * b
+    let raw = measure {=> rawZgemm(a, b, out)}
+    let inplace = measure {=> gemmInto(a, b, out)}
+    let tMul = measure {
+        =>
+            let _ = a * b
+            ()
+    }
+    printRow("raw cblas_zgemm ${n}x${n}", raw, gflops: gemmFlopsComplex(n) / raw / 1.0e9)
+    printRow("matcang gemmInto (in-place)", inplace, gflops: gemmFlopsComplex(n) / inplace / 1.0e9)
+    printRow("matcang a * b (allocating)", tMul, gflops: gemmFlopsComplex(n) / tMul / 1.0e9)
+    println("  wrapper overhead: ${trim((inplace / raw - 1.0) * 100.0)}%")
+    if (inplace > raw * 1.25) {
+        println("  COMPLEX PARITY FAIL: gemmInto exceeded 1.25x of raw zgemm")
+        return false
+    }
+
+    // correctness alongside speed: gemmInto agrees with the operator...
+    let viaOp = a * b
+    if (!viaOp.approxEquals(out, tol: 1e-6)) {
+        println("  COMPLEX FAIL: gemmInto and a * b disagree")
+        return false
+    }
+    // ...and (A B)^H = B^H A^H
+    let lhs = viaOp.h
+    let rhs = b.h * a.h
+    if (!lhs.approxEquals(rhs, tol: 1e-6)) {
+        println("  COMPLEX FAIL: (AB)^H != B^H A^H")
+        return false
+    }
+
+    let rhsVec = ComplexVector.fromReal(Vector.random(n, seed: 25))
+    let tSolve = measure(reps: 5) {
+        =>
+            let _ = solve(a, rhsVec)
+            ()
+    }
+    printRow("zgesv solve ${n}x${n}", tSolve)
+
+    // Hermitian eig and complex svd on a moderate size
+    let herm = a * a.h // Hermitian, positive semidefinite
+    let m = 256
+    let hm = randomComplex(m, m, 26, 27)
+    let hHerm = hm * hm.h
+    let tEig = measure(reps: 3) {
+        =>
+            let _ = eigHermitian(hHerm)
+            ()
+    }
+    printRow("zheev eigHermitian ${m}x${m}", tEig)
+
+    let tSvd = measure(reps: 3) {
+        =>
+            let _ = svd(hm)
+            ()
+    }
+    printRow("zgesdd svd ${m}x${m}", tSvd)
+
+    let hpd = hHerm + ComplexMatrix.identity(m) * Float64(m) // Hermitian PD
+    let tChol = measure(reps: 3) {
+        =>
+            let _ = cholesky(hpd)
+            ()
+    }
+    printRow("zpotrf cholesky ${m}x${m}", tChol)
+
+    let tQr = measure(reps: 3) {
+        =>
+            let _ = qr(hm)
+            ()
+    }
+    printRow("zgeqrf+zungqr qr ${m}x${m}", tQr)
+    println("  complex: OK")
+    true
+}
+
+func advancedSuite(): Unit {
+    printHeader("advanced double solvers")
+    let n = 256
+    let g = Matrix.randomNormal(n, n, seed: 31)
+    let sym = (g + g.t) * 0.5
+    let spd = g.t * g + Matrix.identity(n) * Float64(n)
+
+    let tGen = measure(reps: 3) {
+        =>
+            let _ = eigSymmetricGeneralized(sym, spd)
+            ()
+    }
+    printRow("dsygvd generalized eig ${n}x${n}", tGen)
+
+    let small = Matrix.randomNormal(64, 64, seed: 32)
+    let tExp = measure(reps: 3) {
+        =>
+            let _ = expm(small)
+            ()
+    }
+    printRow("expm 64x64 (Pade + squaring)", tExp)
+
+    let tEigen = measure(reps: 3) {
+        =>
+            let _ = eigen(small)
+            ()
+    }
+    printRow("dgeev eigen+vectors 64x64", tEigen)
+
+    let tSchur = measure(reps: 3) {
+        =>
+            let _ = schur(g)
+            ()
+    }
+    printRow("dgees schur ${n}x${n}", tSchur)
+}
+
 main(): Int64 {
     println("matcang benchmarks")
     println("  backend : ${getConfig()}")
@@ -216,10 +368,16 @@ main(): Int64 {
     elementwiseSuite()
     transposeSuite()
     factorSuite()
+    let complexOk = complexSuite()
+    advancedSuite()
 
     println("")
     if (!parityOk) {
         println("RESULT: FAIL (parity regression)")
+        return 1
+    }
+    if (!complexOk) {
+        println("RESULT: FAIL (complex correctness)")
         return 1
     }
     println("RESULT: OK")

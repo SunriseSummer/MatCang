@@ -1,6 +1,6 @@
 /*
  * Public, safe-to-link wrappers over the raw OpenBLAS foreign decls.
- * AUTO-GENERATED; do not edit by hand (see tools/gen_bindings.py).
+ * AUTO-GENERATED; do not edit by hand (see .devtools/gen_bindings.py).
  *
  * Cangjie `foreign` functions only resolve to their C symbol when called
  * from inside their declaring package, so these thin `unsafe` forwarders

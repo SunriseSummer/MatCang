@@ -15,15 +15,15 @@ Add matcang and the OpenBLAS runtime to your module's `cjpm.toml`:
   output-type = "executable"
 
 # one entry per platform you build on/for — each links the prebuilt OpenBLAS
-# shipped under third_party/openblas/lib/<platform>/ (path relative to your module)
+# shipped under .openblas/lib/<platform>/ (path relative to your module)
 [target.x86_64-unknown-linux-gnu]
-  link-option = "-L<matcang>/third_party/openblas/lib/linux_x86_64 -lopenblas"
+  link-option = "-L<matcang>/.openblas/lib/linux_x86_64 -lopenblas"
 
 [target.x86_64-w64-mingw32]
-  link-option = "-L<matcang>/third_party/openblas/lib/windows_x86_64 -lopenblas"
+  link-option = "-L<matcang>/.openblas/lib/windows_x86_64 -lopenblas"
 
 [target.aarch64-apple-darwin]
-  link-option = "-L<matcang>/third_party/openblas/lib/macos_arm64 -lopenblas"
+  link-option = "-L<matcang>/.openblas/lib/macos_arm64 -lopenblas"
 
 [dependencies]
   matcang = { path = "<matcang>/matcang" }
@@ -232,6 +232,42 @@ let generalised = tryInverse(a) ?? pinv(a)  // graceful degradation in one line
 Reach for `try*` in sampling/estimation loops (e.g. RANSAC minimal samples —
 see `examples/robust_fitting`); keep the throwing forms for straight-line
 mathematical code where failure is exceptional.
+
+## 10c. Complex matrices and vectors
+
+Complex linear algebra mirrors the real API. `ComplexMatrix` / `ComplexVector`
+store interleaved `(re, im)` pairs (LAPACK's native layout, zero-copy across
+the FFI), and the element API speaks `Complex`:
+
+```cangjie
+import matcang.core.{Complex, ComplexMatrix, ComplexVector}
+import matcang.linalg.{solve, inverse, determinant, cholesky, qr, svd, eigen, eigHermitian}
+
+let a = ComplexMatrix([[Complex(1.0, 1.0), Complex(2.0, 0.0)],
+                       [Complex(3.0, 0.0), Complex(4.0, -1.0)]])
+let b = ComplexVector.of([Complex(1.0, 0.0), Complex.i()])
+
+let x = solve(a, b)          // zgesv:  a * x == b
+let d = determinant(a)       // Complex
+let e = eigen(a)             // eigenvalues AND right eigenvectors (zgeev)
+let f = qr(a)                // f.q.h * f.q == I,  f.q * f.r == a
+```
+
+Two things have no real-matrix counterpart:
+
+- **`.h` vs `.t`** — `a.h` is the conjugate (Hermitian) transpose, `a.t` the
+  plain transpose. Hermitian identities (`(AB)ᴴ = Bᴴ Aᴴ`) use `.h`.
+- **Two inner products** — `x.dot(y)` is the unconjugated `Σ xᵢ yᵢ` (zdotu);
+  `x.dotc(y)` is the Hermitian `Σ conj(xᵢ) yᵢ` (zdotc). Norms, orthogonality
+  and quantum-style expectations want `dotc`.
+
+For a Hermitian matrix (`a == a.h`), prefer `eigHermitian`: it returns **real**
+ascending eigenvalues with orthonormal complex eigenvectors (zheev) — the
+workhorse for physics and signal processing. Promote real data with
+`ComplexMatrix.fromReal(m)` / combine parts with `fromParts(re, im)`, and drop
+back with `.real()` / `.imag()`. In tight loops, `matcang.blas.gemmInto` has a
+complex overload with `ConjTrans` flags and complex α/β. Worked programs:
+`examples/dft_spectrum`, `examples/rlc_circuit`, `examples/quantum_spin`.
 
 ## 11. Handling errors
 

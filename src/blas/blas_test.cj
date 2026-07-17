@@ -5,7 +5,7 @@
 package matcang.blas
 
 import std.math.*
-import matcang.core.{Matrix, Vector, Transpose, DimensionMismatchException}
+import matcang.core.{Matrix, Vector, Complex, ComplexMatrix, Transpose, DimensionMismatchException}
 
 @Test
 class BlasTests {
@@ -82,5 +82,47 @@ class BlasTests {
         let c = syrk(a)
         @Expect(abs(c[0, 1] - c[1, 0]) < 1e-15)
         @Expect(abs(c[0, 1] - 32.0) < 1e-12)
+    }
+}
+
+@Test
+class ComplexBlasTests {
+    func ma(): ComplexMatrix {
+        ComplexMatrix([[Complex(1.0, 1.0), Complex(2.0, 0.0)], [Complex(0.0, 1.0), Complex(1.0, -1.0)]])
+    }
+    func mb(): ComplexMatrix {
+        ComplexMatrix([[Complex(2.0, -1.0), Complex(0.0, 1.0)], [Complex(1.0, 0.0), Complex(3.0, 2.0)]])
+    }
+
+    @TestCase
+    func complexGemmMatchesOperator() {
+        @Expect(gemm(ma(), mb()).approxEquals(ma() * mb(), tol: 1e-12))
+    }
+
+    @TestCase
+    func complexGemmTransposeFlags() {
+        // Trans reproduces .t products; ConjTrans reproduces .h products
+        @Expect(gemm(ma(), mb(), transA: Transpose.Trans).approxEquals(ma().t * mb(), tol: 1e-12))
+        @Expect(gemm(ma(), mb(), transB: Transpose.ConjTrans).approxEquals(ma() * mb().h, tol: 1e-12))
+        @Expect(gemm(ma(), mb(), transA: Transpose.ConjTrans, transB: Transpose.Trans)
+            .approxEquals(ma().h * mb().t, tol: 1e-12))
+    }
+
+    @TestCase
+    func complexGemmAlpha() {
+        // alpha = i rotates the whole product by 90 degrees
+        let byI = gemm(ma(), mb(), alpha: Complex(0.0, 1.0))
+        @Expect(byI.approxEquals((ma() * mb()) * Complex(0.0, 1.0), tol: 1e-12))
+    }
+
+    @TestCase
+    func complexGemmIntoAccumulates() {
+        let c = ComplexMatrix.identity(2)
+        // c = 1*A*B + 2*c
+        gemmInto(ma(), mb(), c, beta: Complex(2.0, 0.0))
+        let expected = ma() * mb() + ComplexMatrix.identity(2) * Complex(2.0, 0.0)
+        @Expect(c.approxEquals(expected, tol: 1e-12))
+        // shape mismatch is a contract violation
+        @AssertThrows[DimensionMismatchException](gemmInto(ma(), mb(), ComplexMatrix(3, 3)))
     }
 }

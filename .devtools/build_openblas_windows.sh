@@ -9,7 +9,7 @@ set -euo pipefail
 VERSION="v0.3.33"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${REPO_ROOT}/.openblas-win-build"
-DEST="${REPO_ROOT}/third_party/openblas/lib/windows_x86_64"
+DEST="${REPO_ROOT}/.openblas/lib/windows_x86_64"
 JOBS="$(nproc 2>/dev/null || echo 4)"
 
 echo ">> cloning OpenBLAS ${VERSION}"

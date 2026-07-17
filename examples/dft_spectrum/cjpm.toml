@@ -1,0 +1,10 @@
+[package]
+  cjc-version = "1.0.5"
+  name = "dft_spectrum"
+  description = "matcang example: dft_spectrum"
+  version = "1.1.0"
+  output-type = "executable"
+  compile-option = "-O2"
+
+[dependencies]
+  matcang = { path = "../../" }

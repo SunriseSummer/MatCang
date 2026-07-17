@@ -4,8 +4,13 @@ __pycache__/
 *.cov
 .todo/
 .agents/
-.claude/
 .idea/
 .vscode/
 *.user
 cjpm.lock
+
+# Prebuilt OpenBLAS runtimes are NOT committed (they are ~140 MB and bloat the
+# history). They ship in the release packages under .openblas/lib/<platform>/;
+# for local development, drop the matching platform's libraries there. The rest
+# of .openblas/ (headers, LICENSE, exported-symbol lists) stays tracked.
+.openblas/lib/

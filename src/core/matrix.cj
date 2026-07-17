@@ -406,8 +406,10 @@ public class Matrix <: ToString {
     }
 
     // ---- arithmetic (element-wise & scalar) ------------------------------
-    // The +, -, scalar * and unary - paths run on BLAS level-1 kernels
+    // The +, -, scalar *, / and unary - paths run on BLAS level-1 kernels
     // (daxpy/dscal) over the flat buffers rather than per-element closures.
+    // Scalar + / - broadcast a constant to every entry, which has no level-1
+    // kernel, so those stay element-wise loops.
     public operator func +(rhs: Matrix): Matrix {
         checkSameShape(rhs)
         let out = copy()
@@ -435,7 +437,9 @@ public class Matrix <: ToString {
     }
 
     public operator func /(s: Float64): Matrix {
-        map {v => v / s}
+        let out = copy()
+        scaleBuffer(out.data, 1.0 / s)
+        out
     }
 
     public operator func +(s: Float64): Matrix {

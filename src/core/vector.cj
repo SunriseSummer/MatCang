@@ -107,6 +107,9 @@ public class Vector <: ToString {
 
     /** i-th standard basis vector e_i in R^size. */
     public static func basis(size: Int64, i: Int64): Vector {
+        if (i < 0 || i >= size) {
+            throw MatCangException("basis index ${i} out of bounds [0, ${size})")
+        }
         let v = Vector(size)
         v.data[i] = 1.0
         v
@@ -262,7 +265,9 @@ public class Vector <: ToString {
     }
 
     // ---- arithmetic -------------------------------------------------------
-    // +, -, scalar * and unary - run on BLAS level-1 kernels (daxpy/dscal).
+    // +, -, scalar *, / and unary - run on BLAS level-1 kernels (daxpy/dscal).
+    // Scalar + / - broadcast a constant to every entry, which has no level-1
+    // kernel, so those stay element-wise loops.
     public operator func +(rhs: Vector): Vector {
         checkSameSize(rhs)
         let out = copy()
@@ -290,7 +295,9 @@ public class Vector <: ToString {
     }
 
     public operator func /(s: Float64): Vector {
-        map {v => v / s}
+        let out = copy()
+        scaleBuffer(out.data, 1.0 / s)
+        out
     }
 
     public operator func +(s: Float64): Vector {
