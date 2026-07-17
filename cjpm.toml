@@ -1,0 +1,21 @@
+[package]
+  cjc-version = "1.0.5"
+  name = "matcang"
+  description = "matcang - a modern, elegant matrix computation library for Cangjie, powered by OpenBLAS"
+  version = "1.0.0"
+  target-dir = ""
+  output-type = "static"
+  compile-option = ""
+  override-compile-option = ""
+  link-option = ""
+  package-configuration = {}
+
+# The OpenBLAS runtime is selected per target platform. Each entry links the
+# prebuilt library shipped under .openblas/lib/<platform>/ so the
+# module works out of the box on Linux x64, Windows x64 and macOS arm64 without
+# building OpenBLAS from source. Paths are relative to this module directory.
+
+[ffi.c]
+  openblas = { path = ".openblas/lib/windows_x86_64" }
+  # openblas = { path = ".openblas/lib/macos_arm64" }
+  # openblas = { path = ".openblas/lib/linux_x86_64" }

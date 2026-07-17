@@ -1,0 +1,10 @@
+[package]
+  cjc-version = "1.0.5"
+  name = "finite_element"
+  description = "matcang example: finite_element"
+  version = "1.0.0"
+  output-type = "executable"
+  compile-option = "-O2"
+
+[dependencies]
+  matcang = { path = "../../" }
